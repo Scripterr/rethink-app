@@ -18,7 +18,13 @@ package com.celzero.bravedns.database
 
 import androidx.lifecycle.LiveData
 import androidx.paging.PagingSource
-import androidx.room.*
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Transaction
+import androidx.room.Update
 import com.celzero.bravedns.util.Constants.Companion.UID_EVERYBODY
 
 @Dao
@@ -92,6 +98,9 @@ interface CustomIpDao {
         "select * from CustomIp where ipAddress like :query and isActive = 1 and uid != $UID_EVERYBODY order by uid"
     )
     fun getAllCustomIpRules(query: String): PagingSource<Int, CustomIp>
+
+    @Query("update CustomIp set uid = :newUid where uid = :uid")
+    fun updateUid(uid: Int, newUid: Int)
 
     @Query("delete from CustomIp where uid != $UID_EVERYBODY") fun deleteAllAppsRules()
 }

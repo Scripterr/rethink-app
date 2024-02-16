@@ -30,6 +30,7 @@ import com.celzero.bravedns.util.Utilities.getCountryCode
 import com.celzero.bravedns.util.Utilities.getFlag
 import com.celzero.bravedns.util.Utilities.makeAddressPair
 import com.celzero.bravedns.util.Utilities.normalizeIp
+import dnsx.Dnsx
 import dnsx.Summary
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
@@ -51,8 +52,6 @@ internal constructor(
         private const val RDATA_MAX_LENGTH = 100
     }
 
-    private var numRequests: Long = 0
-    private var numBlockedRequests: Long = 0
     private val vpnStateMap = HashMap<Transaction.Status, BraveVPNService.State>()
 
     init {
@@ -61,6 +60,7 @@ internal constructor(
         vpnStateMap[Transaction.Status.NO_RESPONSE] = BraveVPNService.State.DNS_SERVER_DOWN
         vpnStateMap[Transaction.Status.TRANSPORT_ERROR] = BraveVPNService.State.DNS_SERVER_DOWN
         vpnStateMap[Transaction.Status.BAD_QUERY] = BraveVPNService.State.DNS_ERROR
+        vpnStateMap[Transaction.Status.CLIENT_ERROR] = BraveVPNService.State.DNS_ERROR
         vpnStateMap[Transaction.Status.BAD_RESPONSE] = BraveVPNService.State.DNS_ERROR
         vpnStateMap[Transaction.Status.INTERNAL_ERROR] = BraveVPNService.State.APP_ERROR
     }
@@ -91,12 +91,7 @@ internal constructor(
 
         dnsLog.blockLists = transaction.blocklist
         dnsLog.resolverId = transaction.id
-        if (transaction.transportType.isDnsCrypt()) {
-            dnsLog.relayIP = transaction.relayName
-        } else {
-            // fixme: handle for DoH and Dns proxy
-            dnsLog.relayIP = ""
-        }
+        dnsLog.relayIP = transaction.relayName
         dnsLog.dnsType = transaction.transportType.ordinal
         dnsLog.latency = transaction.responseTime
         dnsLog.queryStr = transaction.name
@@ -112,6 +107,12 @@ internal constructor(
         }
 
         dnsLog.resolver = transaction.serverName
+
+        // mark the query as blocked if the transaction id is Dnsx.BlockAll, no need to check
+        // for blocklist as it is already marked as blocked
+        if (transaction.id == Dnsx.BlockAll) {
+            dnsLog.isBlocked = true
+        }
 
         if (transaction.status === Transaction.Status.COMPLETE) {
 
@@ -144,7 +145,8 @@ internal constructor(
                         dnsLog.response = transaction.response.take(RDATA_MAX_LENGTH)
                     }
                     // if the response is empty and blocklist is not empty, then mark it as blocked
-                    if (transaction.blocklist.isNotEmpty()) {
+                    // most likely happens with HTTP SVCB records which are blocked
+                    if (transaction.response.isEmpty() && transaction.blocklist.isNotEmpty()) {
                         dnsLog.isBlocked = true
                     }
                 }

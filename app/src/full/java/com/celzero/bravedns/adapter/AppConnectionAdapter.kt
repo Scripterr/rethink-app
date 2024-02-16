@@ -23,6 +23,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.paging.PagingDataAdapter
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
@@ -30,10 +32,13 @@ import com.celzero.bravedns.R
 import com.celzero.bravedns.data.AppConnection
 import com.celzero.bravedns.databinding.ListItemAppConnDetailsBinding
 import com.celzero.bravedns.service.IpRulesManager
-import com.celzero.bravedns.ui.AppConnectionBottomSheet
+import com.celzero.bravedns.ui.bottomsheet.AppConnectionBottomSheet
 import com.celzero.bravedns.util.LoggerConstants
 import com.celzero.bravedns.util.UIUtils.fetchColor
 import com.celzero.bravedns.util.Utilities.removeBeginningTrailingCommas
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AppConnectionAdapter(val context: Context, val uid: Int) :
     PagingDataAdapter<AppConnection, AppConnectionAdapter.ConnectionDetailsViewHolder>(
@@ -94,8 +99,7 @@ class AppConnectionAdapter(val context: Context, val uid: Int) :
 
         private fun setupClickListeners(appConn: AppConnection) {
             b.acdContainer.setOnClickListener {
-
-                // open bottom sheet for options
+                // open bottom sheet to apply domain/ip rules
                 openBottomSheet(appConn)
             }
         }
@@ -127,13 +131,15 @@ class AppConnectionAdapter(val context: Context, val uid: Int) :
             b.acdCount.text = appConnection.count.toString()
             b.acdFlag.text = appConnection.flag
             b.acdIpAddress.text = appConnection.ipAddress
-            val rule =
-                IpRulesManager.isIpRuleAvailable(
-                    uid,
-                    appConnection.ipAddress,
-                    null // don't check for port as adding rule from this screen port is null
-                )
-            updateStatusUi(rule)
+            io {
+                val rule =
+                    IpRulesManager.isIpRuleAvailable(
+                        uid,
+                        appConnection.ipAddress,
+                        null // don't check for port as adding rule from this screen port is null
+                    )
+                uiCtx { updateStatusUi(rule) }
+            }
             if (!appConnection.appOrDnsName.isNullOrEmpty()) {
                 b.acdDomainName.visibility = View.VISIBLE
                 b.acdDomainName.text = beautifyDomainString(appConnection.appOrDnsName)
@@ -202,5 +208,13 @@ class AppConnectionAdapter(val context: Context, val uid: Int) :
 
     override fun notifyDataset(position: Int) {
         this.notifyItemChanged(position)
+    }
+
+    private suspend fun uiCtx(f: suspend () -> Unit) {
+        withContext(Dispatchers.Main) { f() }
+    }
+
+    private fun io(f: suspend () -> Unit) {
+        (context as LifecycleOwner).lifecycleScope.launch { withContext(Dispatchers.IO) { f() } }
     }
 }

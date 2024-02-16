@@ -25,12 +25,12 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.celzero.bravedns.R
 import com.celzero.bravedns.database.WgConfigFiles
-import com.celzero.bravedns.databinding.ListItemWgInterfaceBinding
+import com.celzero.bravedns.databinding.ListItemWgGeneralInterfaceBinding
 import com.celzero.bravedns.service.ProxyManager
 import com.celzero.bravedns.service.VpnController
 import com.celzero.bravedns.service.WireguardManager
-import com.celzero.bravedns.ui.WgConfigDetailActivity
-import com.celzero.bravedns.ui.WgConfigEditorActivity.Companion.INTENT_EXTRA_WG_ID
+import com.celzero.bravedns.ui.activity.WgConfigDetailActivity
+import com.celzero.bravedns.ui.activity.WgConfigEditorActivity.Companion.INTENT_EXTRA_WG_ID
 import com.celzero.bravedns.util.UIUtils
 
 class WgConfigAdapter(private val context: Context) :
@@ -67,16 +67,33 @@ class WgConfigAdapter(private val context: Context) :
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): WgInterfaceViewHolder {
         val itemBinding =
-            ListItemWgInterfaceBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+            ListItemWgGeneralInterfaceBinding.inflate(
+                LayoutInflater.from(parent.context),
+                parent,
+                false
+            )
         return WgInterfaceViewHolder(itemBinding)
     }
 
-    inner class WgInterfaceViewHolder(private val b: ListItemWgInterfaceBinding) :
+    inner class WgInterfaceViewHolder(private val b: ListItemWgGeneralInterfaceBinding) :
         RecyclerView.ViewHolder(b.root) {
 
         fun update(config: WgConfigFiles) {
             b.interfaceNameText.text = config.name
             b.interfaceSwitch.isChecked = config.isActive
+            val lockdown =
+                context.getString(
+                    R.string.ci_ip_label,
+                    context.getString(R.string.firewall_rule_global_lockdown),
+                    config.isLockdown.toString()
+                )
+            b.interfaceLockdown.text = lockdown
+            b.interfaceCatchAll.text =
+                context.getString(
+                    R.string.ci_ip_label,
+                    context.getString(R.string.catch_all_wg_dialog_title),
+                    config.isCatchAll.toString()
+                )
             updateStatus(config)
             setupClickListeners(config)
         }
@@ -84,11 +101,34 @@ class WgConfigAdapter(private val context: Context) :
         private fun updateStatus(config: WgConfigFiles) {
             val id = ProxyManager.ID_WG_BASE + config.id
             val apps = ProxyManager.getAppCountForProxy(id).toString()
+            val statusId = VpnController.getProxyStatusById(id)
+            if (statusId == null) {
+                WireguardManager.disableConfig(config)
+            }
+            updateStatusUI(config, statusId, apps)
+        }
+
+        private fun handleSwitchClick(config: WgConfigFiles) {
+            val id = ProxyManager.ID_WG_BASE + config.id
+            val apps = ProxyManager.getAppCountForProxy(id).toString()
+            val statusId = VpnController.getProxyStatusById(id)
+            updateStatusUI(config, statusId, apps)
+        }
+
+        private fun updateStatusUI(config: WgConfigFiles, statusId: Long?, apps: String) {
             val appsCount = context.getString(R.string.firewall_card_status_active, apps)
             if (config.isActive) {
-                val statusId = VpnController.getProxyStatusById(id)
+                b.interfaceSwitch.isChecked = true
+                b.interfaceDetailCard.strokeColor = UIUtils.fetchColor(context, R.attr.accentGood)
+                b.interfaceDetailCard.strokeWidth = 2
                 if (statusId != null) {
                     val resId = UIUtils.getProxyStatusStringRes(statusId)
+                    b.interfaceProxyStatus.text =
+                        context.getString(
+                            R.string.ci_ip_label,
+                            context.getString(R.string.lbl_status),
+                            context.getString(resId).replaceFirstChar(Char::titlecase)
+                        )
                     b.interfaceStatus.text =
                         context.getString(
                             R.string.about_version_install_source,
@@ -96,6 +136,14 @@ class WgConfigAdapter(private val context: Context) :
                             appsCount
                         )
                 } else {
+                    b.interfaceProxyStatus.text =
+                        context.getString(
+                            R.string.ci_ip_label,
+                            context.getString(R.string.lbl_status),
+                            context
+                                .getString(R.string.status_failing)
+                                .replaceFirstChar(Char::titlecase)
+                        )
                     b.interfaceStatus.text =
                         context.getString(
                             R.string.about_version_install_source,
@@ -106,6 +154,15 @@ class WgConfigAdapter(private val context: Context) :
                         )
                 }
             } else {
+                b.interfaceDetailCard.strokeColor = UIUtils.fetchColor(context, R.attr.background)
+                b.interfaceDetailCard.strokeWidth = 0
+                b.interfaceSwitch.isChecked = false
+                b.interfaceProxyStatus.text =
+                    context.getString(
+                        R.string.ci_ip_label,
+                        context.getString(R.string.lbl_status),
+                        context.getString(R.string.lbl_disabled).replaceFirstChar(Char::titlecase)
+                    )
                 b.interfaceStatus.text =
                     context.getString(
                         R.string.about_version_install_source,
@@ -116,17 +173,15 @@ class WgConfigAdapter(private val context: Context) :
         }
 
         fun setupClickListeners(config: WgConfigFiles) {
-            b.interfaceNameLayout.setOnClickListener { launchConfigDetail(config.id) }
+            b.interfaceDetailCard.setOnClickListener { launchConfigDetail(config.id) }
 
             b.interfaceSwitch.setOnCheckedChangeListener(null)
             b.interfaceSwitch.setOnClickListener {
-                val checked = b.interfaceSwitch.isChecked
-                if (checked) {
+                if (b.interfaceSwitch.isChecked) {
                     if (WireguardManager.canEnableConfig(config)) {
                         WireguardManager.enableConfig(config)
-                        updateStatus(config)
+                        handleSwitchClick(config)
                     } else {
-                        b.interfaceSwitch.isChecked = false
                         Toast.makeText(
                                 context,
                                 context.getString(R.string.wireguard_enabled_failure),
@@ -136,7 +191,7 @@ class WgConfigAdapter(private val context: Context) :
                     }
                 } else {
                     WireguardManager.disableConfig(config)
-                    updateStatus(config)
+                    handleSwitchClick(config)
                 }
             }
         }
@@ -144,6 +199,10 @@ class WgConfigAdapter(private val context: Context) :
         private fun launchConfigDetail(id: Int) {
             val intent = Intent(context, WgConfigDetailActivity::class.java)
             intent.putExtra(INTENT_EXTRA_WG_ID, id)
+            intent.putExtra(
+                WgConfigDetailActivity.INTENT_EXTRA_WG_TYPE,
+                WgConfigDetailActivity.WgType.DEFAULT.value
+            )
             context.startActivity(intent)
         }
     }

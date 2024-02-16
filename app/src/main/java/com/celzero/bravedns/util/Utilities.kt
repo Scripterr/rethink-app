@@ -62,10 +62,15 @@ import com.celzero.bravedns.util.LoggerConstants.Companion.LOG_TAG_FIREWALL
 import com.celzero.bravedns.util.LoggerConstants.Companion.LOG_TAG_VPN
 import com.google.common.base.CharMatcher
 import com.google.common.net.InternetDomainName
+import com.google.gson.JsonParser
 import inet.ipaddr.HostName
 import inet.ipaddr.IPAddress
 import inet.ipaddr.IPAddressString
 import kotlinx.coroutines.launch
+import okio.HashingSink
+import okio.blackholeSink
+import okio.buffer
+import okio.source
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -143,8 +148,7 @@ object Utilities {
                 Settings.Secure.getString(
                     context.contentResolver,
                     Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-                )
-                    ?: return false
+                ) ?: return false
             val colonSplitter = SimpleStringSplitter(':')
             colonSplitter.setString(enabledServicesSetting)
             while (colonSplitter.hasNext()) {
@@ -280,11 +284,11 @@ object Utilities {
         try {
             Toast.makeText(context, message, toastLength).show()
         } catch (e: IllegalStateException) {
-            Log.w(LOG_TAG_VPN, "Show Toast issue : ${e.message}", e)
+            Log.w(LOG_TAG_VPN, "toast err: ${e.message}")
         } catch (e: IllegalAccessException) {
-            Log.w(LOG_TAG_VPN, "Show Toast issue : ${e.message}", e)
+            Log.w(LOG_TAG_VPN, "toast err: ${e.message}")
         } catch (e: IOException) {
-            Log.w(LOG_TAG_VPN, "Show Toast issue : ${e.message}", e)
+            Log.w(LOG_TAG_VPN, "toast err: ${e.message}")
         }
     }
 
@@ -491,10 +495,7 @@ object Utilities {
                 context.packageManager.getApplicationInfo(packageName, PackageManager.GET_META_DATA)
             }
         } catch (e: PackageManager.NameNotFoundException) {
-            Log.w(
-                LOG_TAG_FIREWALL,
-                "ApplicationInfo is not available for package name: $packageName"
-            )
+            Log.w(LOG_TAG_FIREWALL, "no app info for package name: $packageName")
             null
         }
     }
@@ -608,7 +609,7 @@ object Utilities {
     }
 
     fun isNonApp(p: String): Boolean {
-        return p.contains(NO_PACKAGE)
+        return p.startsWith(NO_PACKAGE)
     }
 
     fun removeLeadingAndTrailingDots(str: String?): String {
@@ -728,13 +729,36 @@ object Utilities {
         return String.format("%.1f %sB", bytes / Math.pow(unit.toDouble(), exp.toDouble()), pre)
     }
 
-    // get time in seconds and add "sec" or "min" or "hr" or "day" accordingly
-    fun getDurationInHumanReadableFormat(context: Context, sec: Int): String {
-        return when {
-            sec < 60 -> "$sec ${context.getString(R.string.lbl_sec)}"
-            sec < 3600 -> "${sec / 60} ${context.getString(R.string.lbl_min)}"
-            sec < 86400 -> "${sec / 3600} ${context.getString(R.string.lbl_hour)}"
-            else -> "${sec / 86400} ${context.getString(R.string.lbl_day)}"
+    fun calculateMd5(filePath: String): String {
+        // HashingSink will update the md5sum with every write call and then call down
+        // to blackholeSink(), ref: https://stackoverflow.com/a/61217039
+        return File(filePath).source().buffer().use { source ->
+            HashingSink.md5(blackholeSink()).use { sink ->
+                source.readAll(sink)
+                sink.hash.hex()
+            }
         }
+    }
+
+    fun getTagValueFromJson(path: String, tag: String): String {
+        var tagValue = ""
+        try {
+            // Read the JSON file
+            val jsonContent = File(path).readText()
+
+            // Parse JSON using JsonParser
+            val jsonObject = JsonParser.parseString(jsonContent).asJsonObject
+
+            // Extract the specific tag value
+            if (jsonObject.has(tag)) {
+                tagValue = jsonObject.get(tag).asString
+                Log.i(LOG_TAG_DOWNLOAD, "get tag value: $tagValue, for tag: $tag")
+            } else {
+                Log.i(LOG_TAG_DOWNLOAD, "tag not found: $tag")
+            }
+        } catch (e: Exception) {
+            Log.e(LOG_TAG_DOWNLOAD, "err parsing the json file: ${e.message}", e)
+        }
+        return tagValue
     }
 }

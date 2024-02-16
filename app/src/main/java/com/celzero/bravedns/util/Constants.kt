@@ -176,6 +176,9 @@ class Constants {
         // constants to send type of proxy: for socks5
         const val SOCKS = "Socks5"
 
+        // constants to send type of proxy: for http
+        const val HTTP = "HTTP"
+
         // data-time format used as part of network log adapter
         const val DATE_FORMAT_PATTERN = "HH:mm:ss"
 
@@ -290,7 +293,7 @@ class Constants {
         const val PCAP_FOLDER_NAME = "Rethink"
 
         // pcap file name
-        const val PCAP_FILE_NAME_PART = "Rethink_PCAP_"
+        const val PCAP_FILE_NAME_PART = "rethink_pcap_"
 
         // pcap file extension
         const val PCAP_FILE_EXTENSION = ".pcap"

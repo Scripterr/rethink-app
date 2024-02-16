@@ -86,7 +86,9 @@ object TcpProxyHelper : KoinComponent {
         INVALID(5);
 
         fun isPaid() = this == PAID
+
         fun isFailed() = this == FAILED
+
         fun isNotPaid() = this == NOT_PAID
     }
 
@@ -109,6 +111,8 @@ object TcpProxyHelper : KoinComponent {
     }
 
     fun isCloudflareIp(ip: String): Boolean {
+        // do not check for cloudflare ips for now
+        // return false
         return try {
             cfIpTrie.hasAny(ip)
         } catch (e: Exception) {
@@ -128,9 +132,7 @@ object TcpProxyHelper : KoinComponent {
         var works = false
         try {
             val retrofit =
-                RetrofitManager.getTcpProxyBaseBuilder(
-                        RetrofitManager.Companion.OkHttpDnsType.DEFAULT
-                    )
+                RetrofitManager.getTcpProxyBaseBuilder()
                     .addConverterFactory(GsonConverterFactory.create())
                     .build()
             val retrofitInterface = retrofit.create(ITcpProxy::class.java)
@@ -155,7 +157,11 @@ object TcpProxyHelper : KoinComponent {
                 Log.w(LOG_TAG_PROXY, "unsuccessful response for ${response?.raw()?.request?.url}")
             }
         } catch (e: Exception) {
-            Log.w(LOG_TAG_PROXY, "publicKeyUsable: exception while checking public key", e)
+            Log.e(
+                LOG_TAG_PROXY,
+                "publicKeyUsable: exception while checking public key: ${e.message}",
+                e
+            )
         }
         return works
     }
